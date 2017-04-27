@@ -468,6 +468,41 @@ class decoderReg(circuit):
 		output.reverse()
 		return output 
 
+#sign extend		
+class signExtend(circuit):
+	def __init__(self, instru):
+		self.instru_ = instru 
+	def getCircuitOutput(self):
+		if self.instru_[0] == 0:
+			list = [0]*16
+			o_signExtend = list + self.instru_
+		else:
+			list = [1]*16
+			o_signExtend = list + self.instru_
+		return o_signExtend
+
+class Memory(circuit):
+	def __init__(self):
+		self.memory_ = [[0]*32]*32
+
+	def biToDecConvert(self, binary):
+		sum = 0 
+		for counter in range(0, 32):
+			sum += 2**(31-counter) * binary[counter]
+		return sum
+
+	def lw(self, address):
+		memAddress = self.biToDecConvert(address)
+		return self.memory_[memAddress]
+
+
+	def sw(self, address, valueToStore):
+		memAddress = self.biToDecConvert(address)
+		memory[memAddress] = valueToStore
+
+	def getMemory(self):
+		return self.memory_
+
 #simple MIPS
 class simpleMIPS(circuit):
 	def __init__(self, registers):
@@ -485,50 +520,73 @@ class simpleMIPS(circuit):
 		MemRead = out_mainCtrol[4]
 		MemWrite = out_mainCtrol[5]
 		Branch = out_mainCtrol[7]
-
-		signal_8digit = []
-		#ALUOp1
-		signal_8digit.append(out_mainCtrol[7])
-		#ALUOp0
-		signal_8digit.append(out_mainCtrol[8])
-		#instruction [5-0]
-		for counter in range(26, 32):
-			signal_8digit.append(instru[counter])
-
+		ALUOp1 = out_mainCtrol[7]
+		ALUOp0 = out_mainCtrol[8]
+		signal_8digit = [ALUOp1, ALUOp0] + instru[26:32]
+		
 		#get 4 digit operation code
 		aluCtrl = aluControl(signal_8digit)
 		out_aluCtrl = aluCtrl.getCircuitOutput()
 
-		
+
 		opctrl = out_aluCtrl[0]
 		#get cin for alu-32bit
 		cin = out_aluCtrl[1]
-		#get rs
-		rs_5digit = []
-		for counter in range(6,11):
-			rs_5digit.append(instru[counter])
+
+		#[25-21]
+		rs_5digit = instru[6:11]
 		decoderReg_0 = decoderReg(rs_5digit)
 		rs = decoderReg_0.getCircuitOutput()
-		#get rt
-		rt_5digit = []
-		for counter in range(12,17):
-			rt_5digit.append(instru[counter])
+		#[20-16]
+		rt_5digit = instru[12:17]
 		decoderReg_1 = decoderReg(rt_5digit)
 		rt = decoderReg_1.getCircuitOutput()
 
-		#rd
-		rd_5digit = []
+		#[15-11]
+		rd_5digit = instru[18:23]
 		for counter in range(18,23):
 			rd_5digit.append(instru[counter])
 		decoderReg_2 = decoderReg(rd_5digit)
 		rd = decoderReg_2.getCircuitOutput()
 
+		#[15-0]
+		immediate_16digit = instru[18:32]
+		signExt = signExtend(immediate_16digit)
+		immediate = signExt.getCircuitOutput()
+
 		arr1 = self.register_file.getRegValue(rs)
 		arr2 = self.register_file.getRegValue(rt)
-		alu_32bit = ALU_32bit(arr1, arr2, cin, opctrl)
+
+		if ALUSrc == 0:
+			o_aluSrc = arr2
+		else:
+			o_aluSrc = immediate
+		
+		
+		alu_32bit = ALU_32bit(arr1, o_aluSrc, cin, opctrl)
 		out_alu_32bit = alu_32bit.getCircuitOutput()
-		self.register_file.setRegValue(rd, out_alu_32bit)
-		return out_alu_32bit
+
+		if RegDst == 0:
+			o_regDst = rt
+		else:
+			o_regDst = rd 
+
+		memory = Memory()
+		
+		o_lw = memory.lw(out_alu_32bit)
+		if MemWrite == 1:
+			memory.sw(out_alu_32bit, arr2)
+
+		if MemToReg == 0:
+			o_memToReg = o_lw
+		else:
+			o_memToReg = out_alu_32bit
+
+		if RegWrite == 1:
+			self.register_file.setRegValue(rd, o_memToReg)
+
+		o_memory = memory.getMemory()
+		return self.register_file, o_memory, out_alu_32bit
 
 
 
