@@ -340,7 +340,7 @@ class ALU_32bit(object):
 		#slt case
 		if self.signal_ == [0,1,1,1]:
 			subCtrs = [0, 1, 1, 0]
-			for counter in range (32, 0, -1):
+			for counter in range (31, -1, -1):
 				add_1bitalu = ALU_1bit(self.arr01_[counter], self.arr02_[counter], cin, subCtrs)
 				slt_1bitalu = ALU_1bit(self.arr01_[counter], self.arr02_[counter], cin, self.signal_)
 				out_add_1bit = add_1bitalu.getCircuitOutput()[0]
@@ -350,7 +350,7 @@ class ALU_32bit(object):
 			output[31] = out_add_1bit
 		#other case
 		else:
-			for counter in range(32, 0, -1):
+			for counter in range(31, -1, -1):
 				alu_1bit = ALU_1bit(self.arr01_[counter], self.arr02_[counter], cin, self.signal_)
 				out_alu_1bit = alu_1bit.getCircuitOutput()
 				output.append(out_alu_1bit[0])
@@ -402,15 +402,8 @@ class mainCtrol(circuit):
 		org_1 = orgate(out_andg6_0, out_andg6_1)
 		out_org_1 = org_1.getCircuitOutput()
 
-		output.append(out_andg6_0)
-		output.append(out_org_0)
-		output.append(out_andg6_1)
-		output.append(out_org_1)
-		output.append(out_andg6_1)
-		output.append(out_andg6_2)
-		output.append(out_andg6_3)
-		output.append(out_andg6_0)
-		output.append(out_andg6_3)
+		output = [out_andg6_0, out_org_0, out_andg6_1, out_org_1, out_andg6_1, out_andg6_2, out_andg6_3, out_andg6_0, out_andg6_3]
+		
 
 		return output
 
@@ -498,7 +491,7 @@ class Memory(circuit):
 
 	def sw(self, address, valueToStore):
 		memAddress = self.biToDecConvert(address)
-		memory[memAddress] = valueToStore
+		self.memory_[memAddress] = valueToStore
 
 	def getMemory(self):
 		return self.memory_
@@ -506,13 +499,16 @@ class Memory(circuit):
 #simple MIPS
 class simpleMIPS(circuit):
 	def __init__(self, registers):
-		self.register_file = registerFile(registers)
+		self.register_file = registers
 
 	def getCircuitOutput(self, instru):
+		print instru 
 		#main control
+		print "0-5: ", [instru[0], instru[1], instru[2], instru[3], instru[4], instru[5]]
 		mainCtrol_ = mainCtrol(instru[0], instru[1], instru[2], instru[3], instru[4], instru[5])
 		out_mainCtrol = mainCtrol_.getCircuitOutput()
-
+		print "main control: ", out_mainCtrol
+		
 		RegDst = out_mainCtrol[0]
 		ALUSrc = out_mainCtrol[1]
 		MemToReg = out_mainCtrol[2]
@@ -526,8 +522,10 @@ class simpleMIPS(circuit):
 		
 		#get 4 digit operation code
 		aluCtrl = aluControl(signal_8digit)
-		out_aluCtrl = aluCtrl.getCircuitOutput()
 
+
+		out_aluCtrl = aluCtrl.getCircuitOutput()
+		print "4 digit opcode: ", out_aluCtrl
 
 		opctrl = out_aluCtrl[0]
 		#get cin for alu-32bit
@@ -535,58 +533,75 @@ class simpleMIPS(circuit):
 
 		#[25-21]
 		rs_5digit = instru[6:11]
+		print "25-21: ", rs_5digit
 		decoderReg_0 = decoderReg(rs_5digit)
 		rs = decoderReg_0.getCircuitOutput()
 		#[20-16]
-		rt_5digit = instru[12:17]
+		rt_5digit = instru[11:16]
+		print "20-16: ", rt_5digit
 		decoderReg_1 = decoderReg(rt_5digit)
 		rt = decoderReg_1.getCircuitOutput()
 
 		#[15-11]
-		rd_5digit = instru[18:23]
-		for counter in range(18,23):
-			rd_5digit.append(instru[counter])
+		rd_5digit = instru[16:21]
+		print "15-11: ", rd_5digit
 		decoderReg_2 = decoderReg(rd_5digit)
 		rd = decoderReg_2.getCircuitOutput()
 
 		#[15-0]
-		immediate_16digit = instru[18:32]
+		immediate_16digit = instru[16:32]
+		
 		signExt = signExtend(immediate_16digit)
 		immediate = signExt.getCircuitOutput()
 
 		arr1 = self.register_file.getRegValue(rs)
 		arr2 = self.register_file.getRegValue(rt)
 
+		print "size: ", arr1
+		
+
 		if ALUSrc == 0:
+			print "size: ", arr2
 			o_aluSrc = arr2
 		else:
+			print "immediate: ", immediate_16digit
 			o_aluSrc = immediate
 		
-		
+
 		alu_32bit = ALU_32bit(arr1, o_aluSrc, cin, opctrl)
 		out_alu_32bit = alu_32bit.getCircuitOutput()
 
 		if RegDst == 0:
+			print "register destiny is rt"
 			o_regDst = rt
 		else:
+			print "register destiny is rd"
 			o_regDst = rd 
 
+		print "register dst: ", o_regDst
+
 		memory = Memory()
-		
-		o_lw = memory.lw(out_alu_32bit)
+		if MemRead == 1: 
+			o_lw = memory.lw(out_alu_32bit)
+			print "load word: ", o_lw
 		if MemWrite == 1:
 			memory.sw(out_alu_32bit, arr2)
+			print "store word: "
 
-		if MemToReg == 0:
+		if MemRead == 1:
+			print "load word to register"
 			o_memToReg = o_lw
 		else:
+			print "alu calculation to register"
 			o_memToReg = out_alu_32bit
 
 		if RegWrite == 1:
-			self.register_file.setRegValue(rd, o_memToReg)
+			print "write register"
+			self.register_file.setRegValue(o_regDst, o_memToReg)
 
 		o_memory = memory.getMemory()
-		return self.register_file, o_memory, out_alu_32bit
+		o_regFile = self.register_file.getAllRegValues()
+		return o_regFile, o_memory, out_alu_32bit
 
 
 
