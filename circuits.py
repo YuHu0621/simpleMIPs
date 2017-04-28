@@ -476,7 +476,11 @@ class signExtend(circuit):
 
 class Memory(circuit):
 	def __init__(self):
-		self.memory_ = [[0]*32]*32
+		memoryFile = [[0]*32]*32
+		for array in memoryFile:
+			array[29] = 1
+			array[30] = 1
+		self.memory_ = memoryFile
 
 	def biToDecConvert(self, binary):
 		sum = 0 
